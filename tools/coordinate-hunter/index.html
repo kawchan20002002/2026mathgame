@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>座標獵人</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #1a1a1a;
+      color: #f0f0f0;
+      font-family: 'Courier New', monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    h1 {
+      font-size: 2rem;
+      color: #ff8c00;
+      letter-spacing: 4px;
+      margin-bottom: 6px;
+      text-shadow: 0 0 10px #ff8c0066;
+    }
+
+    .subtitle {
+      color: #aaa;
+      font-size: 0.85rem;
+      margin-bottom: 20px;
+      letter-spacing: 1px;
+    }
+
+    /* ── 狀態列 ── */
+    .status-bar {
+      display: flex;
+      gap: 40px;
+      margin-bottom: 18px;
+      font-size: 1.1rem;
+    }
+
+    .status-bar span { color: #ccc; }
+    .status-bar strong { color: #ff8c00; font-size: 1.4rem; }
+
+    #timer.warning strong { color: #ff3333; animation: blink 0.5s infinite; }
+    @keyframes blink { 50% { opacity: 0.3; } }
+
+    /* ── 棋盤 ── */
+    .board-wrap {
+      position: relative;
+      margin-bottom: 20px;
+    }
+
+    canvas {
+      display: block;
+      border: 2px solid #444;
+      cursor: crosshair;
+    }
+
+    /* ── 輸入區 ── */
+    .input-area {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 14px;
+      align-items: center;
+    }
+
+    .input-area label { color: #aaa; font-size: 0.9rem; }
+
+    #guess-input {
+      background: #2a2a2a;
+      border: 2px solid #555;
+      border-radius: 6px;
+      color: #f0f0f0;
+      font-family: 'Courier New', monospace;
+      font-size: 1.1rem;
+      padding: 8px 14px;
+      width: 130px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    #guess-input:focus { border-color: #ff8c00; }
+    #guess-input:disabled { opacity: 0.4; }
+
+    #submit-btn {
+      background: #ff8c00;
+      border: none;
+      border-radius: 6px;
+      color: #111;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+      font-size: 1rem;
+      font-weight: bold;
+      padding: 8px 20px;
+      transition: background 0.2s, transform 0.1s;
+    }
+    #submit-btn:hover:not(:disabled) { background: #ffaa33; transform: scale(1.04); }
+    #submit-btn:disabled { opacity: 0.4; cursor: default; }
+
+    /* ── 訊息 ── */
+    #message {
+      height: 28px;
+      font-size: 1rem;
+      letter-spacing: 1px;
+      margin-bottom: 14px;
+      transition: color 0.2s;
+    }
+    .msg-hit  { color: #66ff66; }
+    .msg-miss { color: #ff4444; }
+    .msg-dup  { color: #ffcc00; }
+    .msg-err  { color: #ff8888; }
+
+    /* ── 結束畫面 ── */
+    #result-screen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    #result-screen.show { display: flex; }
+
+    .result-title {
+      font-size: 1.6rem;
+      color: #ff8c00;
+      letter-spacing: 3px;
+    }
+
+    .result-score {
+      font-size: 3rem;
+      font-weight: bold;
+      color: #fff;
+    }
+
+    .result-score span { color: #ff8c00; }
+
+    .result-msg { color: #aaa; font-size: 0.95rem; }
+
+    #restart-btn {
+      background: transparent;
+      border: 2px solid #ff8c00;
+      border-radius: 6px;
+      color: #ff8c00;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+      font-size: 1rem;
+      padding: 8px 28px;
+      letter-spacing: 2px;
+      transition: background 0.2s, color 0.2s;
+    }
+    #restart-btn:hover { background: #ff8c00; color: #111; }
+
+    /* ── 已猜清單 ── */
+    .guesses-label { color: #666; font-size: 0.8rem; margin-bottom: 4px; letter-spacing: 1px; }
+    #guesses-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      max-width: 500px;
+      justify-content: center;
+      min-height: 28px;
+    }
+    .guess-tag {
+      background: #2a2a2a;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      padding: 2px 8px;
+    }
+    .guess-tag.hit  { color: #66ff66; border: 1px solid #66ff6644; }
+    .guess-tag.miss { color: #888;    border: 1px solid #44444488; }
+  </style>
+</head>
+<body>
+
+<h1>📍 座標獵人</h1>
+<p class="subtitle">找出所有隱藏座標 — 限時 60 秒</p>
+
+<div class="status-bar">
+  <div id="timer"><span>⏱ </span><strong id="time-val">60</strong><span> 秒</span></div>
+  <div id="score-display"><span>得分 </span><strong id="score-val">0</strong><span> / 10</span></div>
+</div>
+
+<div class="board-wrap">
+  <canvas id="board" width="440" height="440"></canvas>
+</div>
+
+<div class="input-area">
+  <label for="guess-input">輸入座標：</label>
+  <input id="guess-input" type="text" placeholder="x,y" autocomplete="off" spellcheck="false">
+  <button id="submit-btn">確認</button>
+</div>
+
+<div id="message"></div>
+
+<div id="result-screen">
+  <div class="result-title">⏹ 遊戲結束</div>
+  <div class="result-score"><span id="final-score">0</span> <span style="font-size:1.5rem;color:#aaa">/ 10</span></div>
+  <div class="result-msg" id="result-msg"></div>
+  <button id="restart-btn">🔄 重新開始</button>
+</div>
+
+<div class="guesses-label">已猜座標</div>
+<div id="guesses-list"></div>
+
+<script>
+// ── 常數 ──
+const RANGE   = 5;        // -5 ~ 5
+const CELLS   = 11;
+const TOTAL   = 10;
+const TIME    = 60;
+const PAD     = 36;       // canvas 邊距
+
+const canvas  = document.getElementById('board');
+const ctx     = canvas.getContext('2d');
+const W       = canvas.width;
+const STEP    = (W - PAD * 2) / (CELLS - 1);
+
+// ── 狀態 ──
+let targets   = [];
+let hits      = new Set();
+let misses    = new Set();
+let timeLeft  = TIME;
+let timer     = null;
+let running   = false;
+
+// ── 工具：邏輯座標 ↔ canvas 像素 ──
+const toX = lx => PAD + (lx + RANGE) * STEP;
+const toY = ly => PAD + (RANGE - ly) * STEP;
+
+// ── 初始化 ──
+function init() {
+  targets = [];
+  hits.clear();
+  misses.clear();
+  timeLeft = TIME;
+  running  = true;
+
+  // 隨機產生 TOTAL 個不重複座標
+  const pool = [];
+  for (let x = -RANGE; x <= RANGE; x++)
+    for (let y = -RANGE; y <= RANGE; y++)
+      pool.push([x, y]);
+  shuffle(pool);
+  targets = pool.slice(0, TOTAL);
+
+  document.getElementById('score-val').textContent = '0';
+  document.getElementById('time-val').textContent  = TIME;
+  document.getElementById('timer').classList.remove('warning');
+  document.getElementById('message').textContent   = '';
+  document.getElementById('message').className      = '';
+  document.getElementById('guesses-list').innerHTML = '';
+  document.getElementById('result-screen').classList.remove('show');
+  document.getElementById('guess-input').disabled   = false;
+  document.getElementById('submit-btn').disabled    = false;
+  document.getElementById('guess-input').value      = '';
+  document.getElementById('guess-input').focus();
+
+  clearInterval(timer);
+  timer = setInterval(tick, 1000);
+  draw();
+}
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
+
+// ── 倒數 ──
+function tick() {
+  timeLeft--;
+  document.getElementById('time-val').textContent = timeLeft;
+  if (timeLeft <= 10)
+    document.getElementById('timer').classList.add('warning');
+  if (timeLeft <= 0) endGame();
+}
+
+// ── 提交猜測 ──
+function submitGuess() {
+  if (!running) return;
+  const raw = document.getElementById('guess-input').value.trim();
+  document.getElementById('guess-input').value = '';
+  document.getElementById('guess-input').focus();
+
+  const m = raw.match(/^(-?\d+)\s*[,，]\s*(-?\d+)$/);
+  if (!m) {
+    showMsg('格式錯誤，請輸入 x,y（例：2,-3）', 'msg-err');
+    return;
+  }
+  const x = parseInt(m[1]), y = parseInt(m[2]);
+  if (x < -RANGE || x > RANGE || y < -RANGE || y > RANGE) {
+    showMsg(`超出範圍（-${RANGE} 到 ${RANGE}）`, 'msg-err');
+    return;
+  }
+
+  const key = `${x},${y}`;
+  if (hits.has(key) || misses.has(key)) {
+    showMsg(`(${key}) 已猜過`, 'msg-dup');
+    return;
+  }
+
+  const isHit = targets.some(([tx, ty]) => tx === x && ty === y);
+  if (isHit) {
+    hits.add(key);
+    addTag(key, true);
+    showMsg(`✓ 命中 (${key})！`, 'msg-hit');
+    document.getElementById('score-val').textContent = hits.size;
+    draw();
+    if (hits.size === TOTAL) endGame();
+  } else {
+    misses.add(key);
+    addTag(key, false);
+    showMsg(`✗ 沒有 (${key})`, 'msg-miss');
+  }
+}
+
+function showMsg(text, cls) {
+  const el = document.getElementById('message');
+  el.textContent = text;
+  el.className   = cls;
+}
+
+function addTag(key, isHit) {
+  const tag = document.createElement('span');
+  tag.className   = 'guess-tag ' + (isHit ? 'hit' : 'miss');
+  tag.textContent = `(${key})`;
+  document.getElementById('guesses-list').appendChild(tag);
+}
+
+// ── 結束 ──
+function endGame() {
+  running = false;
+  clearInterval(timer);
+  document.getElementById('guess-input').disabled  = true;
+  document.getElementById('submit-btn').disabled   = true;
+
+  const score = hits.size;
+  document.getElementById('final-score').textContent = score;
+
+  const msgs = ['繼續加油！', '不錯喔！', '相當厲害！', '完美！全部找到了！'];
+  const idx  = score <= 3 ? 0 : score <= 6 ? 1 : score <= 9 ? 2 : 3;
+  document.getElementById('result-msg').textContent = msgs[idx];
+
+  document.getElementById('result-screen').classList.add('show');
+  draw(true);   // 顯示所有未命中的隱藏點
+}
+
+// ── 畫布 ──
+function draw(showAll = false) {
+  ctx.clearRect(0, 0, W, W);
+
+  // 背景
+  ctx.fillStyle = '#1a1a1a';
+  ctx.fillRect(0, 0, W, W);
+
+  // 格線
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth   = 1;
+  for (let i = 0; i < CELLS; i++) {
+    const x = toX(-RANGE + i);
+    const y = toY(-RANGE + i);
+    ctx.beginPath(); ctx.moveTo(x, PAD); ctx.lineTo(x, W - PAD); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(PAD, y); ctx.lineTo(W - PAD, y); ctx.stroke();
+  }
+
+  // 軸線（亮一點）
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth   = 1.5;
+  ctx.beginPath(); ctx.moveTo(toX(0), PAD); ctx.lineTo(toX(0), W - PAD); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(PAD, toY(0)); ctx.lineTo(W - PAD, toY(0)); ctx.stroke();
+
+  // 刻度數字
+  ctx.fillStyle  = '#666';
+  ctx.font       = '11px Courier New';
+  ctx.textAlign  = 'center';
+  for (let v = -RANGE; v <= RANGE; v++) {
+    if (v === 0) continue;
+    ctx.fillText(v, toX(v), toY(0) + 16);
+    ctx.textAlign = 'right';
+    ctx.fillText(v, toX(0) - 6, toY(v) + 4);
+    ctx.textAlign = 'center';
+  }
+  ctx.fillStyle = '#888';
+  ctx.fillText('0', toX(0) - 10, toY(0) + 14);
+
+  // 軸標籤
+  ctx.fillStyle = '#ff8c00';
+  ctx.font      = 'bold 13px Courier New';
+  ctx.fillText('x', W - PAD + 14, toY(0) + 4);
+  ctx.fillText('y', toX(0) + 4,   PAD - 14);
+
+  // 命中點（橘色實心圓）
+  for (const key of hits) {
+    const [x, y] = key.split(',').map(Number);
+    drawDot(x, y, '#ff8c00', 9, true);
+    drawDot(x, y, '#ffcc66', 4, true);
+  }
+
+  // 遊戲結束時顯示未命中的隱藏點（暗紅）
+  if (showAll) {
+    for (const [tx, ty] of targets) {
+      const key = `${tx},${ty}`;
+      if (!hits.has(key)) drawDot(tx, ty, '#cc3333', 7, true);
+    }
+  }
+}
+
+function drawDot(lx, ly, color, r, fill) {
+  ctx.beginPath();
+  ctx.arc(toX(lx), toY(ly), r, 0, Math.PI * 2);
+  if (fill) { ctx.fillStyle = color; ctx.fill(); }
+  else       { ctx.strokeStyle = color; ctx.stroke(); }
+}
+
+// ── 事件 ──
+document.getElementById('submit-btn').addEventListener('click', submitGuess);
+document.getElementById('guess-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitGuess();
+});
+document.getElementById('restart-btn').addEventListener('click', init);
+
+// ── 啟動 ──
+init();
+</script>
+</body>
+</html>
