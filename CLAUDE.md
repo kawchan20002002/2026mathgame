@@ -16,7 +16,7 @@
 
 ## 工具清單
 （之後加新工具時會自動更新）
-- （尚無）
+- **座標獵人**：`tools/coordinate-hunter/`　[線上網址](https://kawchan20002002.github.io/2026mathgame/tools/coordinate-hunter/)
 
 ## 工作注意事項
 - 學生資料一律去識別化（只用座號 + 班級代號）
